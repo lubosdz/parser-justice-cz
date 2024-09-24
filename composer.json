@@ -1,0 +1,21 @@
+{
+	"name": "lubosdz/parser-justice-cz",
+	"description": "HTML DOM Parser Obchodního rejstříku České republiky - https://justice.cz (HTML DOM Parser for Business Directory of Czech Republic)",
+	"license": "BSD-3-Clause",
+	"keywords": ["API", "justice.cz", "obchodní rejstřík ČR"],
+	"support": {
+		"source": "https://github.com/lubosdz/parser-justice-cz",
+		"issues": "https://github.com/lubosdz/parser-justice-cz/issues"
+	},
+	"authors": [
+		{
+			"name": "lubosdz"
+		}
+	],
+	"require": {
+		"php": ">=7.0"
+	},
+	"autoload": {
+		"psr-4": {"lubosdz\\parserJusticeCz\\": ""}
+	}
+}
