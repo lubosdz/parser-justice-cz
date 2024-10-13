@@ -92,6 +92,9 @@ $detail : array (
 	[addr_zip] => 14900
 	[addr_streetnr] => Filipova 2016
 	[addr_full] => Praha 4, Filipova 2016, PSČ 14900
+	[den_zapisu_num] => 1992-08-26
+	[den_zapisu_txt] => 26. srpna 1992
+	[spis_znacka] => A 6887 vedená u Městského soudu v Praze
 )
 ```
 
@@ -99,11 +102,18 @@ $detail : array (
 Changelog
 =========
 
+1.0.2 - 13.10.2024
+------------------
+* extract more attributes (spis_znacka, den_zapisu_txt, den_zapisu_num)
+* all REEGX use unicode flag /u
+
+
 1.0.1 - 11.09.2024
 ------------------
 * fix loading HTML into DOMDocument due to added extra script before <body> end tag
 * safer REGEX expressions with unicode flag
 * improved documentation
+
 
 1.0.0 - 05.12.2019
 ------------------

@@ -104,7 +104,7 @@ class ConnectorJusticeCz
 		$size = intval($size);
 
 		if ($term && $size > 0 && mb_strlen($term, 'utf-8') >= 3) {
-			// Justice vrati vysledok pre min. 3 znaky
+			// Justice requires at least 3 chars
 			if (preg_match('/^\d{8}$/', $term)) {
 				$subjects = $this->findByIco($term);
 			} else {
@@ -163,7 +163,7 @@ class ConnectorJusticeCz
 		//      when loading into DOMDocument. Extra script was added in cca 2023 (?).
 		$html = "<div>{$html}</div>";
 
-		// purify whitespaces - vkladaju \n alebo &nbsp;
+		// convert whitespaces - inserted are either \n or &nbsp;
 		$html = strtr($html, [
 			'&nbsp;' => ' ',
 		]);
@@ -182,19 +182,38 @@ class ConnectorJusticeCz
 
 			foreach ($rows as $row) {
 
-				// Nazev
+				// Nazev / Commercial name
 				$nodeList = $xpath->query("./tr[1]/td[1]", $row);
 				if(!$nodeList->length){
-					continue; // nazev je povinny
+					continue; // name is required
 				}
 				$name = $nodeList->item(0)->nodeValue;
-				$name = preg_replace('/\s+/', ' ', $name); // viacnasobne inside spaces
+				$name = preg_replace('/\s+/u', ' ', $name); // viacnasobne inside spaces
 
-				// ICO
+				// spisova znacka / register file No.
+				$nodeList = $xpath->query("./tr[2]/td[1]", $row);
+				$spisZnacka = $nodeList->length ? $nodeList->item(0)->nodeValue : '';
+
+				// ICO / company ID
 				$nodeList = $xpath->query("./tr[1]/td[2]", $row);
 				$ico = $nodeList->length ? $nodeList->item(0)->nodeValue : '';
 
-				// adresa - neda sa spolahnut na poradie prvkov :-(
+				// den zapisu / established date
+				$nodeList = $xpath->query("./tr[2]/td[2]", $row);
+				$denZapisuNum = $denZapisTxt = $nodeList->length ? $nodeList->item(0)->nodeValue : '';
+				if($denZapisuNum && preg_match('/\d{4}/ui', $denZapisuNum, $match)){
+					$parts = explode(' ', $denZapisuNum);
+					$parts = array_map('trim', $parts);
+					if(!empty($parts[2]) && $parts[2] > 1800 && !is_numeric($parts[1])){
+						$month = self::numerizeMonth($parts[1]);
+						$day = trim($parts[0], ' .');
+						$denZapisuNum = $parts[2]
+							.'-'.str_pad($month, 2, '0', STR_PAD_LEFT)
+							.'-'.str_pad($day, 2, '0', STR_PAD_LEFT);
+					}
+				}
+
+				// sidlo/adresa - neda sa spolahnut na poradie prvkov :-(
 				$city = '';
 				$nodeList = $xpath->query("./tr[3]/td[1]", $row);
 				if ($nodeList->length) {
@@ -224,23 +243,28 @@ class ConnectorJusticeCz
 
 					// "Praha 10 - Dolní Měcholupy" -> Praha 10, pozn: Frydek-Mistek nema medzeru okolo pomlcky
 					// whoops, avsak ani Ostrana-Hontice a dalsie .. :-( Pre city potrebujeme kratky nazov do 10-15 pismen
-					list($city) = explode('-', $city);
+					$city = explode('-', $city)[0];
 					// Praha 5 -> Praha
-					$city = preg_replace('/\d/', '', $city);
-					// viacnasobne spaces
+					$city = preg_replace('/\d/u', '', $city);
+					// fix multiple spaces
 					$city = preg_replace('/\s+/u', ' ', $city);
 				}
 
 				$out[] = [
 					'name' => self::trimQuotes($name),
-					'ico' => preg_replace('/[^\d]/', '', $ico),
-					'city' => self::trimQuotes($city),
-					// pre polia s adresou, konzistentne so smartform naseptavacem
-					'addr_city' => self::trimQuotes($addr_city),
-					'addr_zip' => preg_replace('/[^\d]/', '', $addr_zip),
+					'ico' => preg_replace('/[^\d]/u', '', $ico),
+					'city' => self::trimQuotes($city), // shortened ie. "Praha" instead of "Praha-Barandov"
+					// address parts
+					'addr_city' => self::trimQuotes($addr_city), // full city e.g. "Praha-Barandov"
+					'addr_zip' => preg_replace('/[^\d]/u', '', $addr_zip),
 					'addr_streetnr' => self::trimQuotes($addr_streetnr),
-					// len pre kontrolu - plna povodna adresa
+					// full original address
 					'addr_full' => self::trimQuotes($addr),
+					// date established
+					'den_zapisu_num' => $denZapisuNum,
+					'den_zapisu_txt' => $denZapisTxt,
+					// register file No.
+					'spis_znacka' => $spisZnacka,
 				];
 			}
 		}
@@ -255,6 +279,41 @@ class ConnectorJusticeCz
 	protected static function trimQuotes($s)
 	{
 		return trim(strtr($s, ['"' => '', "'" => '']));
+	}
+
+	/**
+	* Return month as number, e.g. 30. ledna 2000 -> 2000-01-30
+	* @param text $month
+	*/
+	protected static function numerizeMonth($month)
+	{
+		$month = trim($month);
+		if (preg_match('/^(leden|ledn)/ui', $month)) {
+			return 1;
+		} elseif(preg_match('/^(únor)/ui', $month)) {
+			return 2;
+		} elseif(preg_match('/^(břez)/ui', $month)) {
+			return 3;
+		} elseif(preg_match('/^(dub)/ui', $month)) {
+			return 4;
+		} elseif(preg_match('/^(květ)/ui', $month)) {
+			return 5;
+		} elseif(preg_match('/^(červn)/ui', $month)) {
+			return 6;
+		} elseif(preg_match('/^(červen)/ui', $month)) {
+			return 7;
+		} elseif(preg_match('/^(srp)/ui', $month)) {
+			return 8;
+		} elseif(preg_match('/^(zář)/ui', $month)) {
+			return 9;
+		} elseif(preg_match('/^(říj)/ui', $month)) {
+			return 10;
+		} elseif(preg_match('/^(listop)/ui', $month)) {
+			return 11;
+		} elseif(preg_match('/^(prosin)/ui', $month)) {
+			return 12;
+		}
+		throw new \Exception('Failed converting month name ['.$month.'] to numeric.');
 	}
 
 }
