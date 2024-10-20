@@ -16,7 +16,9 @@
 * Usage example:
 * $connector = new ConnectorJusticeCz;
 * $out = $connector->findByNazev('auto');
+* $out = $connector->findForAutocomplete('auto');
 * $out = $connector->findByIco('44315945');
+* $out = $connector->getDetailByICO('44315945');
 * echo '<pre>'.print_r($out, 1).'</pre>';
 */
 
@@ -96,9 +98,10 @@ class ConnectorJusticeCz
 	/**
 	* Return options for autocomplete list
 	* @param string $term Searched matching string
-	* @param int How many items to return, 1 - 50 (server returns max. 50 items)
+	* @param int $size How many items to return, 1 - 50 (server returns max. 50 items)
+	* @param string $valueAs Any key returned from the response (ie. ico or addr_full), if invalid or empty, return JSON encoded all attributes (default)
 	*/
-	public function findForAutocomplete($term, $size = 10)
+	public function findForAutocomplete($term, $size = 10, $valueAs = 'json')
 	{
 		$out = [];
 		$size = intval($size);
@@ -127,8 +130,11 @@ class ConnectorJusticeCz
 			foreach ($subjects as $subject) {
 				if(!empty($subject['ico'])){
 					$out[] = [
-						'value' => $subject['ico'],
 						'label' => "{$subject['shortname']} (IČO: {$subject['ico']})",
+						// single attribute - deprecated
+						// 'value' => $subject['ico'],
+						// single attribute or all attributes to save further request for reading company details
+						'value' => $subject[$valueAs] ?? json_encode($subject, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
 					];
 				}
 			}
@@ -250,6 +256,20 @@ class ConnectorJusticeCz
 					$city = preg_replace('/\s+/u', ' ', $city);
 				}
 
+				$urlPlatnych = $urlUplny = $urlSbirkaListin = '';
+
+				/** @var \DOMNodeList */
+				$nodeList = $xpath->query("./../../ul[1]/li/a", $row);
+
+				if(3 == $nodeList->length){
+					// e.g. "./rejstrik-firma.vysledky?subjektId=561565&typ=PLATNY"
+					$urlPlatnych = $nodeList->item(0)->getAttribute('href');
+					// e.g. "./rejstrik-firma.vysledky?subjektId=561565&typ=UPLNY"
+					$urlUplny = $nodeList->item(1)->getAttribute('href');
+					// e.g. "./vypis-sl-firma?subjektId=561565"
+					$urlSbirkaListin = $nodeList->item(2)->getAttribute('href');
+				}
+
 				$out[] = [
 					'name' => self::trimQuotes($name),
 					'ico' => preg_replace('/[^\d]/u', '', $ico),
@@ -265,6 +285,10 @@ class ConnectorJusticeCz
 					'den_zapisu_txt' => $denZapisTxt,
 					// register file No.
 					'spis_znacka' => $spisZnacka,
+					// links
+					'urlPlatnych' => self::normalizeUrl($urlPlatnych),
+					'urlUplny' => self::normalizeUrl($urlUplny),
+					'urlSbirkaListin' => self::normalizeUrl($urlSbirkaListin),
 				];
 			}
 		}
@@ -314,6 +338,17 @@ class ConnectorJusticeCz
 			return 12;
 		}
 		throw new \Exception('Failed converting month name ['.$month.'] to numeric.');
+	}
+
+	/**
+	* Return link converted to absolute without the session hash
+	* @param string $url
+	*/
+	protected static function normalizeUrl($url)
+	{
+		$url = dirname(self::URL_SERVER).'/'.ltrim($url, '.\/');
+		$url = explode('&sp=', $url)[0]; // kill request hash, unclear purpose
+		return $url;
 	}
 
 }
