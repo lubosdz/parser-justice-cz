@@ -119,19 +119,20 @@ class ConnectorJusticeCz
 
 			$subjects = array_slice($subjects, 0, $size); // return first $size matches
 
-			foreach ($subjects as &$subject) {
-				$subject['shortname'] = $subject['name'];
-				// cut off too long names
-				if(mb_strlen($subject['shortname'], 'utf-8') > $this->labelMaxChars){
-					$subject['shortname'] = mb_substr($subject['shortname'], 0, $this->labelMaxChars - 3, 'utf-8').' ..';
+			foreach ($subjects as $id => $subject) {
+				// add shortened company name for labels
+				$shortName = $subject['name'];
+				if (mb_strlen($shortName, 'utf-8') > $this->labelMaxChars) {
+					$shortName = mb_substr($shortName, 0, $this->labelMaxChars - 3, 'utf-8').'..';
 				}
+				$subjects[$id]['shortname'] = $shortName;
 			}
 
 			foreach ($subjects as $subject) {
 				if(!empty($subject['ico'])){
 					$out[] = [
 						'label' => "{$subject['shortname']} (IČO: {$subject['ico']})",
-						// single attribute - deprecated
+						// single attribute only - deprecated
 						// 'value' => $subject['ico'],
 						// single attribute or all attributes to save further request for reading company details
 						'value' => $subject[$valueAs] ?? json_encode($subject, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
@@ -190,7 +191,7 @@ class ConnectorJusticeCz
 
 				// Nazev / Commercial name
 				$nodeList = $xpath->query("./tr[1]/td[1]", $row);
-				if(!$nodeList->length){
+				if (!$nodeList->length) {
 					continue; // name is required
 				}
 				$name = $nodeList->item(0)->nodeValue;
@@ -207,10 +208,10 @@ class ConnectorJusticeCz
 				// den zapisu / established date
 				$nodeList = $xpath->query("./tr[2]/td[2]", $row);
 				$denZapisuNum = $denZapisTxt = $nodeList->length ? $nodeList->item(0)->nodeValue : '';
-				if($denZapisuNum && preg_match('/\d{4}/ui', $denZapisuNum, $match)){
+				if ($denZapisuNum && preg_match('/\d{4}/ui', $denZapisuNum, $match)) {
 					$parts = explode(' ', $denZapisuNum);
 					$parts = array_map('trim', $parts);
-					if(!empty($parts[2]) && $parts[2] > 1800 && !is_numeric($parts[1])){
+					if (!empty($parts[2]) && $parts[2] > 1800 && !is_numeric($parts[1])) {
 						$month = self::numerizeMonth($parts[1]);
 						$day = trim($parts[0], ' .');
 						$denZapisuNum = $parts[2]
@@ -258,10 +259,10 @@ class ConnectorJusticeCz
 
 				$urlPlatnych = $urlUplny = $urlSbirkaListin = '';
 
-				/** @var \DOMNodeList */
+				/** @var \DOMNodeList - extract exactly 3 links */
 				$nodeList = $xpath->query("./../../ul[1]/li/a", $row);
 
-				if(3 == $nodeList->length){
+				if (3 == $nodeList->length ){
 					// e.g. "./rejstrik-firma.vysledky?subjektId=561565&typ=PLATNY"
 					$urlPlatnych = $nodeList->item(0)->getAttribute('href');
 					// e.g. "./rejstrik-firma.vysledky?subjektId=561565&typ=UPLNY"
@@ -270,6 +271,7 @@ class ConnectorJusticeCz
 					$urlSbirkaListin = $nodeList->item(2)->getAttribute('href');
 				}
 
+				// final data structure
 				$out[] = [
 					'name' => self::trimQuotes($name),
 					'ico' => preg_replace('/[^\d]/u', '', $ico),
@@ -285,7 +287,7 @@ class ConnectorJusticeCz
 					'den_zapisu_txt' => $denZapisTxt,
 					// register file No.
 					'spis_znacka' => $spisZnacka,
-					// links
+					// entity links - further data extraction ..
 					'urlPlatnych' => self::normalizeUrl($urlPlatnych),
 					'urlUplny' => self::normalizeUrl($urlUplny),
 					'urlSbirkaListin' => self::normalizeUrl($urlSbirkaListin),
@@ -298,11 +300,11 @@ class ConnectorJusticeCz
 
 	/**
 	* Vyhodi quotes z textu, aby neposkodilo HTML atributy
-	* @param string $s
+	* @param string $txt
 	*/
-	protected static function trimQuotes($s)
+	protected static function trimQuotes($txt)
 	{
-		return trim(strtr($s, ['"' => '', "'" => '']));
+		return trim(strtr($txt, ['"' => '', "'" => '']));
 	}
 
 	/**
@@ -312,32 +314,34 @@ class ConnectorJusticeCz
 	protected static function numerizeMonth($month)
 	{
 		$month = trim($month);
-		if (preg_match('/^(leden|ledn)/ui', $month)) {
+
+		if (preg_match("/^(leden|ledn)/ui", $month)) {
 			return 1;
-		} elseif(preg_match('/^(únor)/ui', $month)) {
+		} elseif(preg_match("/^(únor)/ui", $month)) {
 			return 2;
-		} elseif(preg_match('/^(břez)/ui', $month)) {
+		} elseif(preg_match("/^(břez)/ui", $month)) {
 			return 3;
-		} elseif(preg_match('/^(dub)/ui', $month)) {
+		} elseif(preg_match("/^(dub)/ui", $month)) {
 			return 4;
-		} elseif(preg_match('/^(květ)/ui', $month)) {
+		} elseif(preg_match("/^(květ)/ui", $month)) {
 			return 5;
-		} elseif(preg_match('/^(červn)/ui', $month)) {
+		} elseif(preg_match("/^(červn)/ui", $month)) {
 			return 6;
-		} elseif(preg_match('/^(červen)/ui', $month)) {
+		} elseif(preg_match("/^(červen)/ui", $month)) {
 			return 7;
-		} elseif(preg_match('/^(srp)/ui', $month)) {
+		} elseif(preg_match("/^(srp)/ui", $month)) {
 			return 8;
-		} elseif(preg_match('/^(zář)/ui', $month)) {
+		} elseif(preg_match("/^(zář)/ui", $month)) {
 			return 9;
-		} elseif(preg_match('/^(říj)/ui', $month)) {
+		} elseif(preg_match("/^(říj)/ui", $month)) {
 			return 10;
-		} elseif(preg_match('/^(listop)/ui', $month)) {
+		} elseif(preg_match("/^(listop)/ui", $month)) {
 			return 11;
-		} elseif(preg_match('/^(prosin)/ui', $month)) {
+		} elseif(preg_match("/^(prosin)/ui", $month)) {
 			return 12;
 		}
-		throw new \Exception('Failed converting month name ['.$month.'] to numeric.');
+
+		throw new \Exception("Failed converting month name [{$month}] to numeric.");
 	}
 
 	/**
@@ -346,8 +350,8 @@ class ConnectorJusticeCz
 	*/
 	protected static function normalizeUrl($url)
 	{
-		$url = dirname(self::URL_SERVER).'/'.ltrim($url, '.\/');
-		$url = explode('&sp=', $url)[0]; // kill request hash, unclear purpose
+		$url = dirname(self::URL_SERVER)."/".ltrim($url, ".\/");
+		$url = explode("&sp=", $url)[0]; // kill request hash, unclear purpose
 		return $url;
 	}
 
